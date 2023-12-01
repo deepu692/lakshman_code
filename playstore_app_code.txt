@@ -1,0 +1,77 @@
+package sparkPack
+
+import org.apache.log4j.Level
+import org.apache.log4j.Logger
+import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.functions._
+import org.apache.spark.sql.types.FloatType
+import org.apache.spark.sql.types.IntegerType
+import org.apache.spark.sql.types.StringType
+
+object SparkObj extends App{
+  
+Logger.getLogger("org").setLevel(Level.ERROR)
+
+val spark = SparkSession.builder.master("local[*]").appName("Play Store App Analysis").getOrCreate()
+
+
+val binYearUDF = udf((year: Int) => {
+  if (year != null && year <= 2005) "2000-2005"
+  else if (year != null && year <= 2010) "2006-2010"
+  else if (year != null && year <= 2015) "2011-2015"
+  else if (year != null && year <= 2020) "2016-2020"
+  else if (year != null && year <= 2022) "2021-2022"
+  else "2023+"
+}, StringType)
+
+
+
+val binRatingUDF = udf((ratings: Int) => {
+  if (ratings >= 0 && ratings <= 100) "0-100"
+  else if (ratings > 100 && ratings <= 200) "101-200"
+  else if (ratings > 200 && ratings <= 300) "201-300"
+  else "300+"
+}, StringType)
+
+
+val binPriceUDF = udf((price: Float) => {
+  if (price != null && price <= 1) "0-1"
+  else if (price != null && price <= 5) "1-5"
+  else "5+"
+}, StringType)
+
+val binFreeUDF = udf((free: Int) => {
+  if (free == 0) "Not Free"
+  else if (free == 1) "Free"
+  else "Invalid Input"
+}, StringType)
+
+
+val df = spark.read.format("csv").option("header", "true").option("inferSchema",true).option("path","C:/Users/sai/OneDrive/Desktop/project/datasetply.csv").load
+
+val dfWithType = df.withColumn("releasedYear", col("releasedYear").cast(IntegerType))
+  .withColumn("price", col("price").cast(FloatType))
+  .withColumn("ratings", col("ratings").cast(IntegerType))
+  .withColumn("free", col("free").cast(IntegerType))
+
+val dfWithBins = dfWithType.withColumn("year_bin", binYearUDF(col("releasedYear")))
+  .withColumn("price_bin", binPriceUDF(col("price")))
+  .withColumn("rating_bin", binRatingUDF(col("ratings")))
+  .withColumn("free_bin", binFreeUDF(col("free")))
+
+val resultDF = dfWithBins.groupBy("free", "genre", "year_bin", "price_bin", "rating_bin", "free_bin", "minInstalls", "adSupported").count()
+
+
+val formattedDF = resultDF.select(concat(lit("price_bin="),lit("["), col("price_bin"),lit("]")).as("price_bin"),
+      concat(lit("genre="),col("genre")).as("genre"),
+      concat(lit("year_bin="), col("year_bin")).as("year_bin"),
+      concat(lit("rating_bin="), col("rating_bin")).as("rating_bin"),
+	  concat(lit("free_bin="), col("free_bin")).as("free_bin"),
+      concat(lit("minInstalls="), col("minInstalls")).as("minInstalls"),
+      concat(lit("adSupported="), col("adSupported")).as("adSupported"),
+    col("count").as("Count"))
+    
+
+
+formattedDF.show
+}
